@@ -8,10 +8,11 @@
 
 import * as core from '@actions/core'
 import * as index from '../src/index'
-//import '@types/jest'
+
 // Mock the GitHub Actions core library
 const debugMock = jest.spyOn(core, 'debug')
 const getInputMock = jest.spyOn(core, 'getInput')
+const getBooleanInput = jest.spyOn(core, 'getBooleanInput')
 const setFailedMock = jest.spyOn(core, 'setFailed')
 const setOutputMock = jest.spyOn(core, 'setOutput')
 // Mock the action's entrypoint
@@ -39,6 +40,9 @@ describe('action', () => {
     expect(process.platform).toBe('darwin')
   })
 
+  getBooleanInput.mockImplementation((name: string)=> {
+    return true;
+  })
   it('sets the time output', async () => {
     // Set the action's inputs as return values from core.getInput()
     getInputMock.mockImplementation((name: string): string => {
@@ -76,7 +80,9 @@ describe('action', () => {
       switch (name) {
         case 'milliseconds':
           return 'this is not a number'
-        default:
+        case 'cache':
+          return 'true';
+          default:
           return ''
       }
     })
