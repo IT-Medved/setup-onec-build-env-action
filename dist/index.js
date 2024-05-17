@@ -68841,10 +68841,13 @@ class Client {
             return undefined;
         }
         const fullFileName = path.resolve(output, fileName);
-        if (fs.statSync(fullFileName).isFile()) {
-            core.info(`${fileName} already exist`);
-            return fullFileName;
+        try {
+            if (fs.statSync(fullFileName).isFile()) {
+                core.info(`${fileName} already exist`);
+                return fullFileName;
+            }
         }
+        catch { }
         core.info(`Downloading ${fileName}...`);
         const destination = fs.createWriteStream(fullFileName, { flags: 'wx' });
         await new Promise((resolve, reject) => {
