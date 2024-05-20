@@ -68687,13 +68687,13 @@ async function run() {
     let installer;
     if (type === 'edt') {
         if (edt_version === undefined) {
-            throw 'EDT version not specified';
+            throw new Error('EDT version not specified');
         }
         installer = new tools.EDT(edt_version, process.platform);
     }
     else if (type === 'onec') {
         if (onec_version === undefined) {
-            throw 'Onec version not specified';
+            throw new Error('Onec version not specified');
         }
         installer = new tools.Platform83(onec_version, process.platform);
     }
@@ -68782,29 +68782,34 @@ const path = __importStar(__nccwpck_require__(1017));
 const RELEASES_URL = 'https://releases.1c.ru';
 const PROJECTS_URL = '/project/';
 const LOGIN_URL = 'https://login.1c.ru';
-const TICKET_URL = LOGIN_URL + '/rest/public/ticket/get';
+const TICKET_URL = `${LOGIN_URL}/rest/public/ticket/get`;
 class Client {
     login;
     password;
     cookies;
     ticket = '';
     constructor(login, password) {
+        if (!login || !password) {
+            const err = new Error('Do not set login or/and password');
+            core.setFailed(err);
+            throw err;
+        }
         this.login = login;
         this.password = password;
         this.cookies = new cookiejar_1.CookieJar();
     }
-    async auth(url = RELEASES_URL) {
-        let continueURL = await this.getAuthToken();
+    async auth() {
+        const continueURL = await this.getAuthToken();
         await (0, request_1.default)(continueURL, { cookie: this.cookies });
     }
     async getAuthToken(url = RELEASES_URL) {
         core.debug('Authorization');
-        let body = {
+        const body = {
             login: this.login,
             password: this.password,
             serviceNick: url
         };
-        let response = await (0, request_1.default)(TICKET_URL, {
+        const response = await (0, request_1.default)(TICKET_URL, {
             method: 'POST',
             body: JSON.stringify(body),
             cookie: this.cookies,
@@ -68813,31 +68818,31 @@ class Client {
             }
         });
         this.checkResponseError(response);
-        let data = await response.json();
+        const data = await response.json();
         return `${LOGIN_URL}/ticket/auth?token=${data.ticket}`;
     }
     async getText(url) {
-        let fullURL = new URL(url, RELEASES_URL);
-        let response = await this.get(fullURL.toString());
+        const fullURL = new URL(url, RELEASES_URL);
+        const response = await this.get(fullURL.toString());
         return await response.text();
     }
     async get(url) {
         let response = await (0, request_1.default)(url, { cookie: this.cookies });
         if (response.status === 401) {
             core.debug('Re-Authorization');
-            let newURL = await this.getAuthToken(url);
+            const newURL = await this.getAuthToken(url);
             core.debug(`Request. [GET] ${newURL}`);
             response = await (0, request_1.default)(newURL, { cookie: this.cookies });
         }
         await this.checkResponseError(response);
-        return await response;
+        return response;
     }
     async downloadFile(url, output) {
         const fullURL = new URL(url, RELEASES_URL);
         const response = await this.get(fullURL.toString());
         const fileName = extractFileName(response);
         if (fileName === undefined) {
-            core.error("Can't extract file name from response for " + url);
+            core.error(`Can't extract file name from response for ${url}`);
             return undefined;
         }
         const fullFileName = path.resolve(output, fileName);
@@ -68847,7 +68852,9 @@ class Client {
                 return fullFileName;
             }
         }
-        catch { }
+        catch {
+            /* empty */
+        }
         core.info(`Downloading ${fileName}...`);
         const destination = fs.createWriteStream(fullFileName, { flags: 'wx' });
         await new Promise((resolve, reject) => {
@@ -68859,13 +68866,13 @@ class Client {
         return fullFileName;
     }
     async projectPage(project) {
-        return await this.getText(PROJECTS_URL + project + '?allUpdates=true');
+        return await this.getText(`${PROJECTS_URL}${project}?allUpdates=true`);
     }
     async checkResponseError(response) {
         if (response.status === 200) {
             return;
         }
-        let message = `Response error.
+        const message = `Response error.
         Status: ${response.status} (${response.statusText})
         Body: ${await response.text()}`;
         core.error(message);
@@ -68874,13 +68881,13 @@ class Client {
 }
 exports.Client = Client;
 function extractFileName(response) {
-    let header = response.headers.get('content-disposition');
+    const header = response.headers.get('content-disposition');
     if (header === null) {
         return undefined;
     }
     const prefix = 'filename=';
     let filename = header.substring(header.indexOf(prefix) + prefix.length);
-    if (filename[0] === '"' && filename[filename.length - 1] === '"') {
+    if (filename.startsWith('"') && filename.endsWith('"')) {
         filename = filename.substring(1, filename.length - 1);
     }
     return filename;
@@ -68896,7 +68903,7 @@ function extractFileName(response) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.filter = exports.getFilters = void 0;
-const x64Pattern = /.*(\(64\-bit\)|\(64 бит\)).*/;
+const x64Pattern = /.*(\(64-bit\)|\(64 бит\)).*/;
 const rpmPattern = /.+RPM.+(ОС Linux|для Linux$|Linux-систем$).*/;
 const debPattern = /.+DEB.+(ОС Linux|для Linux$|Linux-систем$).*/;
 const linuxPattern = /.*(ОС Linux|для Linux$|Linux-систем$).*/;
@@ -68906,9 +68913,9 @@ const clientPattern = /^Клиент.+/;
 const serverPattern = /^[Cервер|Сервер].+/;
 const thinPattern = /^Тонкий клиент.+/;
 const fullPattern = /^Технологическая платформа.+/;
-const offlinePattern = /.+без интернета.*/;
+const offlinePattern = /.+(без интернета|оффлайн).*/;
 function getFilters(artifactFilter) {
-    let filters = new Array();
+    const filters = new Array();
     switch (artifactFilter.osName) {
         case 'win':
             filters.push(windowsPattern.test.bind(windowsPattern));
@@ -68959,8 +68966,8 @@ function getFilters(artifactFilter) {
 exports.getFilters = getFilters;
 function filter(files, filters) {
     return files.filter(file => {
-        const f = filters.find(filter => !filter(file.name));
-        return f === undefined;
+        const failure = filters.find(f => !f(file.name));
+        return failure === undefined;
     });
 }
 exports.filter = filter;
@@ -69024,24 +69031,23 @@ class OneGet {
     // https://releases.1c.ru/version_file?nick=Platform83&ver=8.3.10.2580&path=Platform%255c8_3_10_2580%255cclient.deb64.tar.gz
     // https://releases.1c.ru/version_file?nick=Platform83&ver=8.3.10.2580&path=Platform%5c8_3_10_2580%5cclient.deb64.tar.gz
     async download(version, artifactFilter) {
-        let filters = filter.getFilters(artifactFilter);
-        let files = filter.filter(version.files, filters);
-        if (files.length == 0) {
+        const filters = filter.getFilters(artifactFilter);
+        const files = filter.filter(version.files, filters);
+        if (files.length === 0) {
             error(`Found't files for version ${JSON.stringify(artifactFilter)}`);
         }
-        core.debug('Files for downloading ' + JSON.stringify(files));
-        let downloadedFiles = [];
-        for (let index = 0; index < files.length; index++) {
-            const file = files[index];
+        core.debug(`Files for downloading ${JSON.stringify(files)}`);
+        const downloadedFiles = [];
+        for (const file of files) {
             core.info(`Downloading ${file.name}`);
-            core.debug('Get artifact download page: ' + file.name);
+            core.debug(`Get artifact download page: ${file.name}`);
             const links = parser.fileDownloadLinks(await this.client.getText(file.url));
             if (links.length === 0) {
                 core.error(`Don't found links for file ${file.name}`);
                 continue;
             }
-            for (let l = 0; l < links.length; l++) {
-                const location = await this.client.downloadFile(links[l], this.downloadTo);
+            for (const link of links) {
+                const location = await this.client.downloadFile(link, this.downloadTo);
                 if (location !== undefined) {
                     downloadedFiles.push(location);
                     break;
@@ -69051,21 +69057,21 @@ class OneGet {
         return downloadedFiles;
     }
     async versionInfo(project, version) {
-        core.debug('Get project page for: ' + project);
-        let page = await this.client.projectPage(project);
-        let versions = parser.versions(page);
-        let filteredVersions = versions.filter(v => v.name === version);
+        core.debug(`Get project page for: ${project}`);
+        const page = await this.client.projectPage(project);
+        const versions = parser.versions(page);
+        const filteredVersions = versions.filter(v => v.name === version);
         if (filteredVersions.length === 0) {
             error(`Version ${version} for ${project} not found`);
         }
-        let versionInfo = filteredVersions[0];
-        core.debug('Version info: ' + JSON.stringify(versionInfo));
+        const versionInfo = filteredVersions[0];
+        core.debug(`Version info: ${JSON.stringify(versionInfo)}`);
         versionInfo.files = await this.versionFiles(versionInfo);
-        core.debug('Version files: ' + JSON.stringify(versionInfo.files));
+        core.debug(`Version files: ${JSON.stringify(versionInfo.files)}`);
         return versionInfo;
     }
     async versionFiles(version) {
-        core.debug('Get project version page for: ' + version.name);
+        core.debug(`Get project version page for: ${version.name}`);
         const page = await this.client.getText(version.url);
         return parser.releaseFiles(page);
     }
@@ -69107,7 +69113,7 @@ const RELEASE_FILES_SELECTOR = '.files-container .formLine a';
 const DOWNLOAD_LINK_SELECTOR = '.downloadDist a';
 function versions(content) {
     const root = (0, node_html_parser_1.parse)(content);
-    let cells = root.querySelectorAll(PROJECT_VERSIONS_SELECTOR);
+    const cells = root.querySelectorAll(PROJECT_VERSIONS_SELECTOR);
     return cells.map(cell => ({
         name: cell.text.trim(),
         url: cell.getAttribute('href')
@@ -69116,7 +69122,7 @@ function versions(content) {
 exports.versions = versions;
 function releaseFiles(content) {
     const root = (0, node_html_parser_1.parse)(content);
-    let cells = root.querySelectorAll(RELEASE_FILES_SELECTOR);
+    const cells = root.querySelectorAll(RELEASE_FILES_SELECTOR);
     return cells.map(cell => ({
         name: cell.text.trim(),
         url: cell.getAttribute('href')
@@ -69125,7 +69131,7 @@ function releaseFiles(content) {
 exports.releaseFiles = releaseFiles;
 function fileDownloadLinks(content) {
     const root = (0, node_html_parser_1.parse)(content);
-    let cells = root.querySelectorAll(DOWNLOAD_LINK_SELECTOR);
+    const cells = root.querySelectorAll(DOWNLOAD_LINK_SELECTOR);
     return cells
         .map(a => a.getAttribute('href'))
         .filter((v) => v !== null && v !== undefined);
@@ -69172,9 +69178,9 @@ const cookiejar_1 = __nccwpck_require__(5507);
 const core = __importStar(__nccwpck_require__(2186));
 async function request(urlString, init) {
     core.debug(`Request [${init?.method ?? 'GET'}] ${urlString}`);
-    let url = new URL(urlString);
-    let cookieJar = init?.cookie;
-    let cookieValue = cookieJar
+    const url = new URL(urlString);
+    const cookieJar = init?.cookie;
+    const cookieValue = cookieJar
         ?.getCookies({
         domain: url.host,
         path: url.pathname,
@@ -69183,20 +69189,18 @@ async function request(urlString, init) {
     })
         .map(c => c.toValueString())
         .join('; ');
-    let fetchInit = init ?? {};
-    if (cookieValue) {
-        if (fetchInit.headers === undefined) {
-            fetchInit.headers = {
-                cookie: cookieValue
-            };
-        }
+    const fetchInit = init ?? {};
+    if (cookieValue && fetchInit.headers === undefined) {
+        fetchInit.headers = {
+            cookie: cookieValue
+        };
     }
     fetchInit.redirect = 'manual';
-    let response = await (0, node_fetch_1.default)(urlString, fetchInit);
+    const response = await (0, node_fetch_1.default)(urlString, fetchInit);
     parseCookies(response, cookieJar);
     if (isRedirect(response)) {
         const locationURL = new URL(response.headers.get('location') ?? '', response.url);
-        core.debug('Redirect to: ' + locationURL);
+        core.debug(`Redirect to: ${locationURL}`);
         return await request(locationURL.toString(), {
             cookie: cookieJar
         });
@@ -69231,7 +69235,7 @@ function parseCookies(response, cookieJar) {
 
 /***/ }),
 
-/***/ 3959:
+/***/ 5991:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -69261,13 +69265,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.EDT = void 0;
-const OnecTool_1 = __nccwpck_require__(6351);
+const onecTool_1 = __nccwpck_require__(6803);
 const core = __importStar(__nccwpck_require__(2186));
 const exec_1 = __nccwpck_require__(1514);
 const glob = __importStar(__nccwpck_require__(8090));
 const tc = __importStar(__nccwpck_require__(7784));
 const onegetjs_1 = __nccwpck_require__(661);
-class EDT extends OnecTool_1.OnecTool {
+class EDT extends onecTool_1.OnecTool {
     INSTALLED_CACHE_PRIMARY_KEY = 'edt';
     version;
     cache_;
@@ -69352,7 +69356,34 @@ exports.EDT = EDT;
 
 /***/ }),
 
-/***/ 6351:
+/***/ 5435:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+__exportStar(__nccwpck_require__(5991), exports);
+__exportStar(__nccwpck_require__(1366), exports);
+__exportStar(__nccwpck_require__(6803), exports);
+
+
+/***/ }),
+
+/***/ 6803:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -69492,7 +69523,7 @@ exports.OnecTool = OnecTool;
 
 /***/ }),
 
-/***/ 3998:
+/***/ 1366:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -69522,12 +69553,12 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Platform83 = void 0;
-const OnecTool_1 = __nccwpck_require__(6351);
+const onecTool_1 = __nccwpck_require__(6803);
 const core = __importStar(__nccwpck_require__(2186));
 const exec_1 = __nccwpck_require__(1514);
 const onegetjs_1 = __nccwpck_require__(661);
 const glob = __importStar(__nccwpck_require__(8090));
-class Platform83 extends OnecTool_1.OnecTool {
+class Platform83 extends onecTool_1.OnecTool {
     INSTALLED_CACHE_PRIMARY_KEY = 'onec';
     version;
     cache_;
@@ -69616,33 +69647,6 @@ exports.Platform83 = Platform83;
 
 /***/ }),
 
-/***/ 5435:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-__exportStar(__nccwpck_require__(3959), exports);
-__exportStar(__nccwpck_require__(3998), exports);
-__exportStar(__nccwpck_require__(6351), exports);
-
-
-/***/ }),
-
 /***/ 7431:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -69683,17 +69687,16 @@ async function unpack(file, destination) {
         await tc.extractTar(file, destination);
     }
     else if (file.endsWith('.rar')) {
-        await (0, exec_1.exec)('7z', ['x', file, '-o' + destination]);
+        await (0, exec_1.exec)('7z', ['x', file, `-o${destination}`, '-y']);
     }
     else {
-        throw new Error('Unsupported archive format: ' + file);
+        throw new Error(`Unsupported archive format: ${file}`);
     }
 }
 exports.unpack = unpack;
 async function unpackFiles(files, destination) {
-    for (let index = 0; index < files.length; index++) {
-        const file = files[index];
-        const output = await unpack(file, destination);
+    for (const file of files) {
+        await unpack(file, destination);
     }
 }
 exports.unpackFiles = unpackFiles;
