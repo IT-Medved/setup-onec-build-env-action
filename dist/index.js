@@ -69635,10 +69635,10 @@ class Platform83 extends onecTool_1.OnecTool {
     }
     getRunFileNames() {
         if (this.isWindows()) {
-            return ['ibcmd.exe'];
+            return ['1cv8.exe'];
         }
         else {
-            return ['ibcmd'];
+            return ['1cv8'];
         }
     }
 }
